@@ -1,0 +1,172 @@
+# [C10-02] Event-Driven Architecture — DETAIL
+> **Category:** C10 — Emerging & Advanced Topics · **Difficulty:** ●/◑/○ · **Banking-relevant:** yes
+>
+> **Companion brief:** `[briefs/C10-02-event-driven.md](../briefs/C10-02-event-driven.md)`
+>
+> **Target reader:** enterprise architect who must *explain, justify, and defend* the topic — not just recite it.
+>
+> ---
+>
+> ## 1. Precise definition
+> Event-Driven Architecture (EDA) is a software architecture pattern in which the flow of the program is determined by events: state changes in the business domain that are captured as immutable logs and consumed by interested parties through decoupled, asynchronous communication channels (Luckham, 2001). In banking regulation (DORA and PSD2), EDA is preferred over tightly coupled RPC because it isolates blast radius: a failure in one consumer must not cascade to the event producer or other consumers.
+>
+> ## 2. Why it exists (problem it solves)
+> The traditional mainframe banking model relied on synchronous, tightly coupled batch and online transaction processing (OLTP). When one subsystem failed, the whole line of business went down; when settlement volumes spiked at T+1 to T+2, the batch system could not keep up. EDA emerged to allow independent scaling, fault isolation, and replayability: every business fact is durably logged, so if regulatory remediation is required, you can replay the event stream without data loss.
+>
+> ## 3. Core concepts & vocabulary
+> | Term | Precise meaning |
+> |------|-----------------|
+> | Immutable Event | A single, forward-only record of fact creation; no overwrites, no editorial corrections. Corrections are new events with clear semantics. |
+> | Append-Only Log | A log (e.g., Kafka) where entries are only appended; consumers read from offsets, enabling state reconstruction. |
+> | Consumer Group | A set of consumers sharing a stream; each partition is consumed by exactly one consumer in the group, providing horizontal partitioning. |
+> | Idempotency | The guarantee that applying the same event multiple times produces the same final state; required when consumers restart or replay from a checkpoint. |
+> | Eventual Consistency | A guarantee that, absent conflicts, all consumers converge to the same aggregate truth after processing the full stream. |
+> | Backpressure | A flow-control mechanism (e.g., Kafka consumer fetch-size limits, reactive streams) preventing producer overload when downstream is slow. |
+>
+> ## 4. How it works (architecture / mechanism)
+> ### 4.1 Diagrams
+> **Diagram A — Core structure (highlight the load-bearing parts = amber, supporting = grey):**
+> ```mermaid
+> graph TD
+>     classDef critical fill:#ffe66d,stroke:#b8860b,stroke-width:2px
+>     classDef context fill:#dfe6e9,stroke:#636e72
+>     classDef decision fill:#a3e634,stroke:#3f6212,stroke-width:1px
+>     
+>     KAFKA[Event Bus - Kafka]:::critical
+>     PROD[Payment Gateway]:::context
+>     CAP[Card Authorization]:::context
+>     SET[Settlement Engine]:::context
+>     FRAUD[Fraud Engine]:::context
+>     
+>     PROD -->|PaymentCreated| CAP
+>     CAP -->|TransactionAuthorized| KAFKA
+>     KAFKA -->|updateOffset| CAP
+>     KAFKA -->|creditAccount| SET:::decision
+>     KAFKA -->|riskCheck| FRAUD
+> ```
+>
+> **Diagram B — Consumer failure with backpressure and replay (highlight decision points = green, failures = red):**
+> ```mermaid
+> flowchart LR
+>     classDef ok fill:#a7f3d0,stroke:#065f46
+>     classDef risk fill:#fecaca,stroke:#991b1b
+>     classDef context fill:#dfe6e9,stroke:#636e72
+>     
+>     PROD[Producer]:::context
+>     EPS[Event Stream]:::context
+>     C1[Consumer A]:::ok
+>     C2[Consumer B]:::risk
+>     LAT[Backpressure Signal]:::risk
+>     
+>     PROD --> EPS
+>     EPS --> C1:::ok
+>    EPS --> C2:::risk
+>     C2 -->|slow| LAT:::risk
+>     LAT -->|pause| EPS
+> ```
+>
+> ## 5. Variants, options & trade-offs
+> | Variant | When to pick | When to avoid | Key trade-off axis |
+> |---------|--------------|---------------|--------------------|
+> | Kafka-based EDA | High-throughput, durable replay, long retention (T+2 consolidation, ML feature pipelines) | Simple, low-throughput control plane | Operational complexity vs. scalability |
+> | Cloud-native EDA (AWS SNS/SQS) | Serverless, event-sourced CQRS systems, low infrastructure-ops burden | Strict latency (< 10 ms) or ordering guarantees | Managed ops vs. fine-grained control |
+> | Event Sourcing with CQRS | Complex aggregate reconstruction, audit requirements, anti-corruption | Event storms, eventual-consistency UX | Read scalability vs. write complexity |
+> | Simple Pub/Sub (Redis, NATS) | Internal microservices, small inventory, gaming/retail | Cross-region, multi-certificate banking | Cost and ops vs. durability |
+>
+> ## 6. Relationships to sibling topics
+> - **Domain-Driven Design (C10-01):** Domain events are the natural vehicle for Bounded Context communication; a `Funded` event is generated by the LoanBounded Context and consumed by Accounting.
+> - **Message-Driven Middleware (C10-03):** Kafka is the event bus; message-driven middleware typically means a queue/broker. Event-driven is a *paradigm*; message-driven is an *implementation*.
+> - **IoT / Edge (C10-10):** High-frequency sensor streams (ATM inventory, kiosk health) use event-driven collectors to reduce edge-to-core bandwidth.
+>
+> ## 7. Banking / financial-services context 💳
+> In a DORA-audited clearinghouse, all trade capture events are published to an append-only Kafka topic `trade.v1` with 7-day retention for surveillance and 1-year retention for legal. The same topic feeds the CRR/III regulatory data warehouse, the real-time ViA (VaR Implausibility Analyser), and the internal fraud model. Because each consumer is independent, a failure in the ML risk model does not prevent settlement—the clearinghouse must process under both EMIR 18/648 and ESMA RTS 23 constraints.
+>
+> ## 8. Reference architecture / worked example
+> **Problem:** The bank's wealth-management platform executes trades and must update the customer's view, the compliance screening rule engine, and the tax reporting system. Currently this is done via synchronous API calls; if tax reporting fails, the trade goes to the customer but the tax record is missing.
+>
+> **Decision:** Replace the synchronous fan-out with an event-driven architecture using Kafka, per-topic offsets, and idempotency keys on every consumer.
+>
+> ```mermaid
+> graph LR
+>     classDef service fill:#bfdbfe,stroke:#1e40af
+>     classDef boundary fill:#f1f5f9,stroke:#475569,stroke-dasharray: 5,color:#64748b
+>     classDef data fill:#fde68a,stroke:#92400e
+>     
+>     API[Wealth Mgmt API]:::service
+>     KAFKA[Kafka Events]:::data
+>     EXEC[Execution]:::service
+>     VIEW[Customer View]:::service
+>     COMP[Compliance Rule]:::service
+>     TAX[Tax Reporting]:::service
+>     
+>     API --> EXEC
+>     EXEC -->|TradeExecuted| KAFKA
+>     KAFKA --> VIEW
+>     KAFKA --> COMP
+>     KAFKA --> TAX
+> ```
+>
+> **ADR drafted:**
+> ```markdown
+> # ADR-2025-058: Wealth Mgmt Event-Driven Trade Settlement
+> ## Status
+> Accepted
+> ## Context
+> A recent SOX audit found that 3% of post-trade tax records were missing because the synchronous tax reporting call failed silently.
+> ## Decision
+> Move post-trade updates to a Kafka topic `trade.executed` with per-consumer idempotency. Consumers must store the idempotency key in a read model that is queryable within 5 minutes.
+> ## Consequences
+> - Positive: Tax record gap reduced to < 0.01%; independent recovery and replay.
+> - Negative: 20-second eventual consistency for tax views; reconciliation tool required.
+> - ...
+> ## Alternatives considered
+> 1. Synchronous retry with circuit breaker: Rejected (unbounded retry degraded performance).
+> 2. Pure event sourcing: Rejected (too steep for non-tech team).
+> ```
+>
+> ## 9. Maturity & adoption signals
+> - **Adopt when:** Traffic > 1M events/hour; regulatory audit requires point-in-time reconstruction; multiple independent SLA domains (payment vs. fraud vs. reporting).
+> - **Anti-signals (don't adopt yet):** Single-team monolith, strongly consistent requirements (e.g., central qualifying collateral).
+> - **Common failure modes:** Event duplication due to non-idempotent consumers; poison pills (unconsumable events freezing the consumer); unbounded retention leading to unbounded DB growth.
+>
+> ## 10. Common confusions — the "don't mix" list
+> | Often confused | Real distinction |
+> |----------------|------------------|
+> | Event vs Message | An event describes *what happened* (a fact); a message describes a *request or command* (an intent). |
+> | Eventual Consistency vs Strong Consistency | Eventual: state converges over time; Strong: every read sees the latest write immediately. |
+> | Idempotent vs Exactly-Once | Idempotent = multiple identical operations = same result; Exactly-once = consumer sees event exactly 1 time. |
+>
+> ## 11. Tools & standards to know
+> - **Standards/Frameworks:** DORA (EU 2022/2554) requires ICT risk management including event-log integrity; ISO 20022 provides standard event metadata for payments; PSD2 mandates event notification for account-access.
+> - **Common tooling:** Apache Kafka (with MirrorMaker 2 for multi-region), Kafka Connect, ksqlDB, Confluent Schema Registry, AWS EventBridge, Azure Event Grid, Spring Cloud Sleuth.
+> - **Mandatory reading:** "Designing Event-Driven Systems" by Datadog Engineering; "Kafka: The Definitive Guide" by Gwen Shapira.
+>
+> ## 12. ADR template (ready to fill in)
+> ```markdown
+> # ADR-XXX: <decision>
+> ## Status
+> Accepted | Proposed | Deprecated
+> ## Context
+> ...
+> ## Decision
+> ...
+> ## Consequences
+> - Positive ...
+> - Negative ...
+> - ...
+> ## Alternatives considered
+> 1. ...
+> 2. ...
+> ```
+>
+> ## 13. Practice — apply it
+> 1. **Recall:** Define "event" and "idempotency" in 2 min without notes.
+> 2. **Model:** Draw a data-flow diagram showing 4 consumers on a single Kafka topic.
+> 3. **ADR:** Write an ADR for an event-driven retry policy when a consumer fails.
+> 4. **Defend:** Explain to a non-technical CRO why "event placement choice" is an architecture decision.
+>
+> ## 14. Summary (1 paragraph)
+> Event-driven architecture is the lingua franca of high-volume, loosely coupled banking systems: it replaces the brittle synchronous chains of mainframes with durable, replayable event streams that scale horizontally and isolate failure. The price is exactly-once semantics, ordering vigilance, and a shift from "keep right" to "eventually right"—a trade-off regulators now expect you to govern.
+>
+> ---
+> **Status:** ✅ Created · **Last updated:** 2026-09-14
