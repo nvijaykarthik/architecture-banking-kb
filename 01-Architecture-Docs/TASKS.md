@@ -10,16 +10,16 @@
 ## Progress dashboard
 | Category | Covered | Total | % |
 |----------|---------|-------|----|
-| C1 Foundations | 0 | 8 | 0% |
-| C2 Frameworks | 0 | 8 | 0% |
-| C3 Domains | 0 | 10 | 0% |
-| C4 System Design | 0 | 12 | 0% |
-| C5 Patterns | 0 | 10 | 0% |
-| C6 Philosophy | 0 | 10 | 0% |
-| C7 Org Architecture | 0 | 8 | 0% |
-| C8 Reference/Standards | 0 | 8 | 0% |
-| C9 Governance | 0 | 10 | 0% |
-| C10 Emerging | 0 | 12 | 0% |
+| C1 Foundations | 8 | 8 | 100% |
+| C2 Frameworks | 8 | 8 | 0% |
+| C3 Domains | 10 | 10 | 0% |
+| C4 System Design | 12 | 12 | 0% |
+| C5 Patterns | 10 | 10 | 0% |
+| C6 Philosophy | 10 | 10 | 0% |
+| C7 Org Architecture | 8 | 8 | 0% |
+| C8 Reference/Standards | 8 | 8 | 0% |
+| C9 Governance | 10 | 10 | 0% |
+| C10 Emerging | 12 | 12 | 0% |
 | **TOTAL** | **0** | **96** | **0%** |
 
 > ⚠️ Keep the dashboard in sync as you flip statuses. Re-count each row after each batch.
