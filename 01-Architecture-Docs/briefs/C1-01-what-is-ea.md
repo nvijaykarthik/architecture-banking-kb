@@ -1,6 +1,8 @@
 # [C1-01] What is Enterprise Architecture? — BRIEF
 > **Category:** C1 Foundations · **Difficulty:** ● foundational · **Banking-relevant:** yes
+
 > **One-liner:** Enterprise Architecture is the *systematic practice of translating enterprise governance strategy into structures, standards, and technology decisions* that align business capabilities, outcomes, and risk appetite with supporting applications, data, and infrastructure.
+
 > **Why an EA cares:** Without a defined EA, banks accumulate "accidental architectures" — shadow IT, siloed data, inconsistent security — that cause integration failures, regulatory gaps, and billions in remediation cost.
 
 ## Quick definition
